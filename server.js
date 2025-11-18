@@ -1,12 +1,18 @@
 import express from "express";
 import cors from "cors";
 import userRoutes from "./routes/userRoute.js";
+import connectDB from "./config/db.js";
 
 const app = express();
 
+// Connect to MongoDB
+connectDB();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+//Routes
 app.use("/api", userRoutes);
 
 const PORT = 5000;
