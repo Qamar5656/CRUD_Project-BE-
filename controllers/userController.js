@@ -66,7 +66,7 @@ export const DeleteUsers = async (req, res) => {
   const { id } = req.params; // get user ID from route
 
   try {
-    console.log("Trying to delete user ID:", id);
+    // console.log("Trying to delete user ID:", id);
     const user = await User.findOneAndDelete({ _id: id });
 
     if (!user) {
@@ -77,5 +77,51 @@ export const DeleteUsers = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server Error" });
+  }
+};
+
+// Update User
+export const UpdateUsers = async (req, res) => {
+  const { id } = req.params; // get user ID from route
+  const { firstName, lastName, email, password } = req.body; // data to update
+
+  try {
+    // Check if user exists
+    const user = await User.findById(id);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Email is already registered" });
+      }
+    }
+
+    // Update fields if provided
+    user.firstName = firstName || user.firstName;
+    user.lastName = lastName || user.lastName;
+    user.email = email || user.email;
+    user.password = password || user.password;
+
+    // Save updated user
+    const updatedUser = await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Backend Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Please try again later.",
+    });
   }
 };
