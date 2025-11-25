@@ -1,5 +1,10 @@
+import { response } from "express";
 import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // Create user in database
 export const createUser = async (req, res) => {
@@ -126,5 +131,49 @@ export const UpdateUsers = async (req, res) => {
       success: false,
       message: "Server error. Please try again later.",
     });
+  }
+};
+
+const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
+
+export const SignInUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check if email exists
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid Email or Password" });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid Email or Password" });
+    }
+
+    // JWT token
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    const { password: pwd, ...userWithoutPassword } = user.toObject();
+
+    // Send response
+    res.status(200).json({
+      success: true,
+      message: "Login Successful",
+      user: userWithoutPassword,
+      token,
+    });
+  } catch (error) {
+    console.error("SignIn Error", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error. Try again later!" });
   }
 };
