@@ -1,0 +1,36 @@
+# Node modules
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Build output (if you generate any)
+dist/
+build/
+coverage/
+
+# Cache / temp
+.cache/
+.tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+
+
+*.env
