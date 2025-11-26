@@ -9,9 +9,10 @@ import transporter from "../utils/mailer.js";
 export const createUser = async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
+    const profileImage = req.file?.filename;
 
     // Check required fields
-    if (!firstName || !lastName || !email || !password) {
+    if (!firstName || !lastName || !email || !password || !profileImage) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
@@ -34,6 +35,7 @@ export const createUser = async (req, res) => {
       existingUser.otp = newOtp;
       existingUser.otpCreatedAt = new Date();
       existingUser.password = await bcrypt.hash(password, 10);
+      existingUser.profileImage = profileImage;
 
       await existingUser.save();
 
@@ -87,6 +89,7 @@ export const createUser = async (req, res) => {
       password: hashedPassword,
       otp,
       otpCreatedAt,
+      profileImage,
     });
 
     res.status(201).json({

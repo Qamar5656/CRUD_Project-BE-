@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    profileImage: { type: String },
 
     // Signup OTP fields
     isVerified: { type: Boolean, default: false },
