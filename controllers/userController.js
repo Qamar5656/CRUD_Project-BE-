@@ -17,26 +17,54 @@ export const createUser = async (req, res) => {
         message: "All fields are required",
       });
     }
-
-    // Check duplicate email
+    // Check if user exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
+
+    //check if user exists and verified
+    if (existingUser && existingUser.isVerified) {
       return res.status(400).json({
         success: false,
-        message: "Email is already registered",
+        message: "Email is already registered. Try to Sign In",
       });
     }
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    //check if user exists and unverified
+    if (existingUser && !existingUser.isVerified) {
+      const newOtp = generateOTP();
+      existingUser.otp = newOtp;
+      existingUser.otpCreatedAt = new Date();
+      existingUser.password = await bcrypt.hash(password, 10);
 
-    // Generate OTP
+      await existingUser.save();
+
+      try {
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: "Your OTP Code",
+          text: `Hello ${firstName}, your OTP code is: ${newOtp}. It is valid for 2 minutes.`,
+        });
+      } catch (emailError) {
+        console.error("Email sending failed:", emailError);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send OTP email. Please try again later.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Email already exists but not verified. New OTP has been sent to your email.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
     const otp = generateOTP();
     const otpCreatedAt = new Date();
 
     console.log("Generated OTP:", otp, "Type:", typeof otp);
 
-    // Send OTP email first
     try {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
@@ -52,7 +80,6 @@ export const createUser = async (req, res) => {
       });
     }
 
-    // Create user only after email is sent successfully
     const newUser = await User.create({
       firstName,
       lastName,
@@ -170,7 +197,7 @@ export const SignInUser = async (req, res) => {
     if (!user) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid Email or Password" });
+        .json({ success: false, message: "No User Found Try to Signup " });
     }
 
     // Compare password
@@ -277,35 +304,24 @@ export const VerifyOtp = async (req, res) => {
 //Resend Otp functionality
 export const ResendOtp = async (req, res) => {
   try {
-    console.log("🔁 Resend OTP API called");
-
-    // Check if req.body exists
-    console.log("Request body:", req.body);
-
     const { email } = req.body;
-    console.log("Email received:", email);
 
     if (!email) {
-      console.log("❌ No email provided");
       return res.status(400).json({
         success: false,
         message: "Email is required",
       });
     }
 
-    console.log("🔍 Searching for user...");
     const user = await User.findOne({ email });
-    console.log("User found:", user ? user.email : "No user found");
 
     if (!user) {
-      console.log("❌ User not found");
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
-    console.log("📋 User verification status:", user.isVerified);
     if (user.isVerified) {
       return res.status(400).json({
         success: false,
@@ -313,35 +329,24 @@ export const ResendOtp = async (req, res) => {
       });
     }
 
-    console.log("🔢 Generating OTP...");
     const otp = generateOTP();
-    console.log("New OTP generated:", otp, "Type:", typeof otp);
 
-    console.log("💾 Updating user in database...");
     user.otp = otp;
     user.otpCreatedAt = new Date();
     await user.save();
-    console.log("✅ User updated with new OTP");
 
-    console.log("📧 Sending email to:", user.email);
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: user.email,
       subject: "Your New OTP Code",
       text: `Hello ${user.firstName}, your new OTP code is: ${otp}. It is valid for 2 minutes.`,
     });
-    console.log("✅ Email sent successfully");
 
     return res.status(200).json({
       success: true,
       message: "OTP resent successfully",
     });
   } catch (error) {
-    console.error("❌ Resend OTP Error Details:");
-    console.error("Error name:", error.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
-
     // Check for specific common errors
     if (error.name === "ValidationError") {
       console.error("Mongoose validation error");
@@ -386,7 +391,7 @@ export const forgetPassword = async (req, res) => {
       from: "system@gmail.com",
       to: email,
       subject: "Password Reset OTP",
-      text: `Your password reset OTP is: ${resetOtp}. Valid for 5 minutes.`,
+      text: `Your password reset OTP is: ${resetOtp}. Valid for 2 minutes.`,
     });
 
     res.status(200).json({
@@ -425,8 +430,8 @@ export const resetPassword = async (req, res) => {
     // Check OTP expiration
     const otpAge =
       (Date.now() - new Date(user.resetOtpCreatedAt).getTime()) / 1000;
-    if (otpAge > 300) {
-      // 5 minutes
+    if (otpAge > 120) {
+      // 2 minutes
       return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
