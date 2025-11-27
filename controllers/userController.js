@@ -1,4 +1,4 @@
-import { response } from "express";
+import { response, text } from "express";
 import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -37,7 +37,18 @@ export const createUser = async (req, res) => {
       existingUser.password = await bcrypt.hash(password, 10);
       existingUser.profileImage = profileImage;
 
+      console.log("Generated otp for unverified user is ", newOtp);
       await existingUser.save();
+
+      if (
+        existingUser.firstName !== firstName ||
+        existingUser.lastName !== lastName
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `First and Last name different from previous entered names , these were ${existingUser.firstName}, ${existingUser.lastName} `,
+        });
+      }
 
       try {
         await transporter.sendMail({
@@ -217,6 +228,14 @@ export const SignInUser = async (req, res) => {
     });
 
     const { password: pwd, ...userWithoutPassword } = user.toObject();
+
+    //Email Alert at User login
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "SignIn Alert",
+      text: "Congratulations You are successfully Logged In",
+    });
 
     // Send response
     res.status(200).json({
