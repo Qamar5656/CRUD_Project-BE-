@@ -8,11 +8,18 @@ import transporter from "../utils/mailer.js";
 // Create user in database
 export const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
     const profileImage = req.file?.filename;
 
     // Check required fields
-    if (!firstName || !lastName || !email || !password || !profileImage) {
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !profileImage ||
+      !role
+    ) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
@@ -46,7 +53,7 @@ export const createUser = async (req, res) => {
       ) {
         return res.status(400).json({
           success: false,
-          message: `First and Last name different from previous entered names , these were ${existingUser.firstName}, ${existingUser.lastName} `,
+          message: `Enter previous entries as  ${existingUser.firstName}, ${existingUser.lastName} `,
         });
       }
 
@@ -101,12 +108,19 @@ export const createUser = async (req, res) => {
       otp,
       otpCreatedAt,
       profileImage,
+      role,
     });
 
+    const {
+      password: pwd,
+      otp: _otp,
+      resetOtp: _rOtp,
+      ...userWithoutSensitive
+    } = newUser.toObject();
     res.status(201).json({
       success: true,
       message: "User created successfully. OTP sent to email.",
-      user: newUser,
+      user: userWithoutSensitive,
     });
   } catch (error) {
     console.error("Backend Error:", error);
@@ -157,7 +171,7 @@ export const DeleteUsers = async (req, res) => {
 // Update User
 export const UpdateUsers = async (req, res) => {
   const { id } = req.params; // get user ID from route
-  const { firstName, lastName, email, password } = req.body; // data to update
+  const { firstName, lastName, email, password, role } = req.body; // data to update
 
   try {
     // Check if user exists
@@ -182,6 +196,7 @@ export const UpdateUsers = async (req, res) => {
     user.lastName = lastName || user.lastName;
     user.email = email || user.email;
     user.password = password || user.password;
+    user.role = role || user.role;
 
     // Save updated user
     const updatedUser = await user.save();
@@ -201,54 +216,90 @@ export const UpdateUsers = async (req, res) => {
 };
 
 //Sign In User api creation
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 export const SignInUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if email exists
     const user = await User.findOne({ email });
-    if (!user) {
+    if (!user)
       return res
         .status(401)
-        .json({ success: false, message: "No User Found Try to Signup " });
-    }
+        .json({ success: false, message: "User not found" });
 
-    // Compare password
+    if (!user.isVerified)
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email first by again signup",
+      });
+
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    if (!isMatch)
       return res
         .status(401)
-        .json({ success: false, message: "Invalid Email or Password" });
-    }
+        .json({ success: false, message: "Invalid credentials" });
 
-    // JWT token
-    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const accessToken = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    const refreshToken = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
 
     const { password: pwd, ...userWithoutPassword } = user.toObject();
 
-    //Email Alert at User login
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "SignIn Alert",
-      text: "Congratulations You are successfully Logged In",
-    });
-
-    // Send response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Login Successful",
       user: userWithoutPassword,
-      token,
+      accessToken,
+      refreshToken,
     });
   } catch (error) {
-    console.error("SignIn Error", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error. Try again later!" });
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+//Refresh Token
+export const refreshAccessToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({ success: false, message: "Missing token" });
+    }
+
+    // Verify refresh token
+    jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET || "refresh_secret_key",
+      (err, decoded) => {
+        if (err) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Invalid token" });
+        }
+
+        // Create new access token
+        const newAccessToken = jwt.sign(
+          { id: decoded.id, role: decoded.role },
+          process.env.JWT_SECRET,
+          { expiresIn: "15m" }
+        );
+
+        return res.json({
+          success: true,
+          accessToken: newAccessToken,
+        });
+      }
+    );
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -356,6 +407,8 @@ export const ResendOtp = async (req, res) => {
     user.otp = otp;
     user.otpCreatedAt = new Date();
     await user.save();
+
+    console.log("OTP generated for resend otp is", otp);
 
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
